@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Panel REAKTO</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Panel REAKTO">
+<meta name="theme-color" content="#0B1B33">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="ikona-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="top">
+  <img src="ikona-180.png" alt="">
+  <div class="tt"><b>Centrum Operacyjne</b><span>REAKTO — statystyki lotów</span></div>
+  <button class="tbtn" id="odswiez" aria-label="Odśwież">&#8635;</button>
+  <button class="tbtn" id="ustaw" aria-label="Ustawienia">&#9881;</button>
+</div>
+
+<div class="stamp" id="stamp"><span>wczytywanie…</span></div>
+<div class="alert hidden" id="alert"></div>
+
+<main class="wrap" id="app">
+  <div class="load"><div class="spinner"></div>Pobieranie danych z arkusza…</div>
+</main>
+
+<div class="sheet hidden" id="sheet">
+  <div class="sheet-b">
+    <h2>Ustawienia</h2>
+    <p class="muted">Wklej adresy arkuszy opublikowanych w sieci w formacie CSV.
+      W Arkuszach Google: <b>Plik → Udostępnij → Opublikuj w internecie</b>,
+      wybierz zakładkę, format <b>CSV</b>, a potem <b>Opublikuj</b>.</p>
+
+    <div class="fld">
+      <label>Arkusze — adresy CSV</label>
+      <div id="lista"></div>
+      <button class="b sec" id="dodaj">+ Dodaj arkusz</button>
+    </div>
+
+    <div class="fld">
+      <label>Odświeżanie co (minut)</label>
+      <input id="cykl" type="number" min="1" max="240" inputmode="numeric">
+    </div>
+
+    <div class="fld">
+      <label>Pomijaj arkusze — nazwy po przecinku</label>
+      <input id="pomijaj" placeholder="np. Kopia, Wzór">
+    </div>
+
+    <div id="stan"></div>
+
+    <button class="b pri" id="zapisz">Zapisz i przelicz</button>
+    <button class="b sec" id="zamknij">Zamknij</button>
+  </div>
+</div>
+
+<script src="analiza.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
