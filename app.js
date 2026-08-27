@@ -118,9 +118,10 @@ function kartaDoby(d) {
 }
 
 function miniAlt(d) {
-  return `<div class="mini alt">
+  return `<div class="mini alt cztery">
     <div><b>${pl(d.man)}</b><span>loty ręczne</span></div>
     <div><b>${pl(d.objazdy)}</b><span>objazdy</span></div>
+    <div><b>${pl(d.interw)}</b><span>interwencyjne</span></div>
     <div><b>${pl(d.kp)}</b><span>KP</span></div></div>`;
 }
 
@@ -228,7 +229,9 @@ function render(d) {
         <div class="dr"><span class="dn"><b>${esc(t)}</b></span>
           <span class="dv">${pl(k.objazdy)}</span><span class="dp">objazdy</span></div>
         <div class="dr"><span class="dn"></span>
-          <span class="dv">${pl(k.man)}</span><span class="dp">ręczne</span></div>`).join('')}
+          <span class="dv">${pl(k.man)}</span><span class="dp">ręczne</span></div>
+        <div class="dr"><span class="dn"></span>
+          <span class="dv">${pl(k.interw)}</span><span class="dp">interwencyjne</span></div>`).join('')}
     </div>
 
     <div class="kicker">Kontrola danych</div>
@@ -240,15 +243,16 @@ function render(d) {
       loty danej doby. Dotknij wiersza, aby zobaczyć rozbicie na lokalizacje.</p>
       <div class="tw"><table>
         <thead><tr><th>Doba</th><th>Plan</th><th>Wyk.</th><th>Niewyk.</th><th>Pogoda</th>
-          <th>Techn.</th><th>KP</th><th>Ręczne</th><th>Objazdy</th>
+          <th>Techn.</th><th>KP</th><th>Ręczne</th><th>Objazdy</th><th>Interw.</th>
           <th style="text-align:left">Arkusz</th></tr></thead><tbody>
         ${(d.kontrola || []).map((x, i) => `<tr class="row-d ${x.biezaca ? 'bz' : ''}"
             onclick="document.getElementById('lk${i}').classList.toggle('open')">
           <td>${esc(x.doba)}</td><td>${pl(x.plan)}</td><td>${pl(x.ok)}</td>
           <td>${pl(x.niew)}</td><td>${pl(x.pogoda)}</td><td>${pl(x.technika)}</td>
           <td>${pl(x.kp)}</td><td>${pl(x.man)}</td><td>${pl(x.objazdy)}</td>
+          <td>${pl(x.interw)}</td>
           <td class="src">${esc(x.zrodla || '—')}</td></tr>
-        <tr id="lk${i}" class="lok-r"><td colspan="10">
+        <tr id="lk${i}" class="lok-r"><td colspan="11">
           ${(x.lok || []).map(l => `<span class="lchip"><b>${esc(l.nazwa)}</b>${l.ok}/${l.plan}</span>`).join('')}
         </td></tr>`).join('')}
         ${(() => {
@@ -257,7 +261,7 @@ function render(d) {
           return `<tr class="total"><td>RAZEM (zamknięte)</td><td>${pl(s('plan'))}</td>
             <td>${pl(s('ok'))}</td><td>${pl(s('niew'))}</td><td>${pl(s('pogoda'))}</td>
             <td>${pl(s('technika'))}</td><td>${pl(s('kp'))}</td><td>${pl(s('man'))}</td>
-            <td>${pl(s('objazdy'))}</td><td></td></tr>`;
+            <td>${pl(s('objazdy'))}</td><td>${pl(s('interw'))}</td><td></td></tr>`;
         })()}
       </tbody></table></div>
     </div>`;

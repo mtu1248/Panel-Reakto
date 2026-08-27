@@ -6,6 +6,7 @@
 const DATE_RE = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})\s*$/;
 const LP_RE = /^\s*LP\s*\.?\s*\d*\s*$/i;
 const ZDARZ_RE = /^\s*zdarzeni/i;
+const LI_RE = /^\s*LI\s*\.?\s*\d*\s*$/i;
 const GODZ_RE = /\b\d{1,2}[:;.]\d{2}\b/g;
 const DNI_MIES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -129,18 +130,23 @@ function ukladA(rows, zrodlo) {
   if (kolTyp === null) return [[], []];
   const kolLok = Math.max(0, kolTyp - 1);
 
-  const loty = [], zdarz = [];
+  const loty = [], zdarz = [], interw = [];
   let lok = null;
   for (const r of rows.slice(hdr + 1)) {
     if (r[kolLok] && r[kolLok].trim()) lok = r[kolLok].trim();
     const typ = (r[kolTyp] || '').trim();
     if (LP_RE.test(typ)) {
       kolumny.forEach(([ci, dat]) => loty.push([dat, lok || '—', typ.toUpperCase(), r[ci] || '', zrodlo]));
+    } else if (LI_RE.test(typ)) {
+      kolumny.forEach(([ci, dat]) => {
+        const n = wartoscInterwencyjnego(r[ci] || '');
+        if (n) interw.push([dat, lok || '—', typ.toUpperCase(), n]);
+      });
     } else if (ZDARZ_RE.test(typ)) {
       kolumny.forEach(([ci, dat]) => { if ((r[ci] || '').trim()) zdarz.push([dat, lok || '—', r[ci]]); });
     }
   }
-  return [loty, zdarz];
+  return [loty, zdarz, interw];
 }
 
 function ukladB(rows, zrodlo) {
@@ -164,25 +170,40 @@ function ukladB(rows, zrodlo) {
     if (n) biez = n;
     naglowek[i] = biez;
   }
-  const kolLP = [], kolZd = [];
+  const kolLP = [], kolZd = [], kolLI = [];
   for (let i = 0; i < szer; i++) {
     const t = rows[wTyp][i] || '';
     if (LP_RE.test(t)) kolLP.push([i, t.trim().toUpperCase()]);
+    else if (LI_RE.test(t)) kolLI.push([i, t.trim().toUpperCase()]);
     else if (ZDARZ_RE.test(t)) kolZd.push(i);
   }
-  const loty = [], zdarz = [];
+  const loty = [], zdarz = [], interw = [];
   for (const r of rows.slice(wTyp + 1)) {
     const dat = parseDate(r[kolDat]);
     if (!dat) continue;
     kolLP.forEach(([ci, et]) => loty.push([dat, naglowek[ci] || '—', et, r[ci] || '', zrodlo]));
     kolZd.forEach(ci => { if ((r[ci] || '').trim()) zdarz.push([dat, naglowek[ci] || '—', r[ci]]); });
+    kolLI.forEach(([ci, et]) => {
+      const n = wartoscInterwencyjnego(r[ci] || '');
+      if (n) interw.push([dat, naglowek[ci] || '—', et, n]);
+    });
   }
-  return [loty, zdarz];
+  return [loty, zdarz, interw];
 }
 
 function rekordyZArkusza(rows, zrodlo) {
-  if (!rows || !rows.length) return [[], []];
+  if (!rows || !rows.length) return [[], [], []];
   return wykryjUklad(rows) === 'A' ? ukladA(rows, zrodlo) : ukladB(rows, zrodlo);
+}
+
+/* Loty interwencyjne rozliczane są osobno — nie wchodzą do planu ani
+   do procentu realizacji, bo wykonuje się je na zgłoszenie. */
+function wartoscInterwencyjnego(v) {
+  const x = (v || '').trim().replace(/\u00a0/g, '').replace(/\s/g, '');
+  if (!x) return 0;
+  const n = parseFloat(x.replace(',', '.'));
+  if (!isNaN(n) && /^[\d,.]+$/.test(x)) return n > 0 ? Math.round(n) : 0;
+  return x.toUpperCase().startsWith('1-') ? 1 : 0;
 }
 
 function policzObjazdy(t) {
@@ -192,7 +213,7 @@ function policzObjazdy(t) {
 }
 
 /* ---------- agregacja ---------- */
-function zbierz(loty, zdarzenia) {
+function zbierz(loty, zdarzenia, interwencyjne) {
   const doby = new Map(), widziane = new Set();
   let dubli = 0;
   for (const [dat, lok, etyk, val, zrodlo] of loty) {
@@ -203,7 +224,7 @@ function zbierz(loty, zdarzenia) {
     if (widziane.has(klucz)) { dubli++; continue; }
     widziane.add(klucz);
     if (!doby.has(dat)) doby.set(dat, {
-      plan: 0, ok: 0, man: 0, objazdy: 0, kat: {}, lok: new Map(),
+      plan: 0, ok: 0, man: 0, objazdy: 0, interw: 0, kat: {}, lok: new Map(),
       lokKlucze: new Map(), zrodla: {},
     });
     const d = doby.get(dat);
@@ -226,17 +247,28 @@ function zbierz(loty, zdarzenia) {
     const n = policzObjazdy(tekst);
     if (n && doby.has(dat)) doby.get(dat).objazdy += n;
   }
+  const widzianeI = new Set();
+  for (const [dat, lok, etyk, n] of (interwencyjne || [])) {
+    const k = dat + '|' + kluczLokalizacji(lok) + '|' + etyk;
+    if (widzianeI.has(k)) continue;
+    widzianeI.add(k);
+    if (!doby.has(dat)) doby.set(dat, {
+      plan: 0, ok: 0, man: 0, objazdy: 0, interw: 0, kat: {}, lok: new Map(),
+      lokKlucze: new Map(), zrodla: {},
+    });
+    doby.get(dat).interw += n;
+  }
   return [new Map([...doby.entries()].sort((a, b) => a[0] - b[0])), dubli];
 }
 
 function sumuj(doby, klucze) {
-  const w = { plan: 0, ok: 0, man: 0, objazdy: 0, kat: {}, lok: new Map(), doby: 0 };
+  const w = { plan: 0, ok: 0, man: 0, objazdy: 0, interw: 0, kat: {}, lok: new Map(), doby: 0 };
   const lk = new Map();
   for (const k of klucze) {
     const d = doby.get(k);
     if (!d) continue;
     w.doby++;
-    ['plan', 'ok', 'man', 'objazdy'].forEach(p => { w[p] += d[p]; });
+    ['plan', 'ok', 'man', 'objazdy', 'interw'].forEach(p => { w[p] += (d[p] || 0); });
     Object.entries(d.kat).forEach(([kk, v]) => { w.kat[kk] = (w.kat[kk] || 0) + v; });
     d.lok.forEach((v, nazwa) => {
       const kl = kluczLokalizacji(nazwa);
@@ -257,10 +289,10 @@ function sumuj(doby, klucze) {
 
 /* ---------- złożenie pełnego zestawu danych ---------- */
 function przelicz(arkusze) {
-  let loty = [], zdarz = [];
+  let loty = [], zdarz = [], interw = [];
   const info = [];
   for (const { nazwa, rows } of arkusze) {
-    const [l, z] = rekordyZArkusza(rows, nazwa);
+    const [l, z, iv] = rekordyZArkusza(rows, nazwa);
     const wypelnione = l.filter(r => (r[3] || '').trim());
     if (!wypelnione.length) continue;
     const daty = [...new Set(wypelnione.map(r => r[0]))].sort();
@@ -271,8 +303,9 @@ function przelicz(arkusze) {
     });
     loty = loty.concat(l);
     zdarz = zdarz.concat(z);
+    interw = interw.concat(iv);
   }
-  const [doby, dubli] = zbierz(loty, zdarz);
+  const [doby, dubli] = zbierz(loty, zdarz, interw);
   if (!doby.size) throw new Error('Nie znaleziono danych o lotach w podanych arkuszach.');
 
   const klucze = [...doby.keys()];
@@ -290,7 +323,8 @@ function przelicz(arkusze) {
   const pak = (w, tytul, opis) => ({
     tytul, opis, plan: w.plan, ok: w.ok, niew: w.niew,
     proc: Math.round(w.proc * 100) / 100, man: w.man, doby: w.doby,
-    objazdy: w.objazdy, pogoda: w.pogoda, technika: w.technika, kp: w.kp,
+    objazdy: w.objazdy, interw: w.interw,
+    pogoda: w.pogoda, technika: w.technika, kp: w.kp,
     kat: Object.fromEntries(Object.entries(w.kat)
       .filter(([k, v]) => k !== 'OK' && v).map(([k, v]) => [KAT_LABEL[k] || k, v])),
     lok: lokLista(w),
@@ -314,7 +348,7 @@ function przelicz(arkusze) {
       krotka: MIESIACE[mm].slice(0, 3).charAt(0).toUpperCase() + MIESIACE[mm].slice(1, 3),
       plan: w.plan, ok: w.ok, niew: w.niew, proc: Math.round(w.proc * 100) / 100,
       doby: w.doby, pogoda: w.pogoda, technika: w.technika, kp: w.kp,
-      man: w.man, objazdy: w.objazdy,
+      man: w.man, objazdy: w.objazdy, interw: w.interw,
     };
   });
   const wRok = sumuj(doby, zamkniete);
@@ -324,6 +358,7 @@ function przelicz(arkusze) {
     return {
       etykieta: etykietaKrotka(k), plan: w.plan, ok: w.ok,
       proc: Math.round(w.proc * 10) / 10, man: w.man, objazdy: w.objazdy,
+      interw: w.interw,
     };
   });
 
@@ -333,6 +368,7 @@ function przelicz(arkusze) {
       doba: etykietaDoby(k), biezaca: k === biezaca,
       plan: w.plan, ok: w.ok, niew: w.niew, pogoda: w.pogoda,
       technika: w.technika, kp: w.kp, man: w.man, objazdy: w.objazdy,
+      interw: w.interw,
       zrodla: Object.entries(d.zrodla).map(([n, c]) => `${n} (${c})`).join(', '),
       lok: [...d.lok.entries()].filter(([, v]) => v.plan)
         .map(([nazwa, v]) => ({ nazwa, plan: v.plan, ok: v.ok })),
@@ -360,7 +396,7 @@ function przelicz(arkusze) {
       suma: {
         plan: wRok.plan, ok: wRok.ok, niew: wRok.niew,
         proc: Math.round(wRok.proc * 100) / 100, doby: wRok.doby,
-        man: wRok.man, objazdy: wRok.objazdy,
+        man: wRok.man, objazdy: wRok.objazdy, interw: wRok.interw,
       },
     },
     przebieg, kontrola, arkusze: info, duplikaty: dubli,

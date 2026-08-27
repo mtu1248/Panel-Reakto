@@ -158,3 +158,6 @@ code{background:#F0F4F9;padding:1px 5px;border-radius:4px;font-size:11.5px}
   .cards .card:first-child{grid-column:auto}
   .months{grid-template-columns:repeat(6,1fr)}
 }
+
+.mini.cztery{grid-template-columns:1fr 1fr}
+@media (min-width:700px){.mini.cztery{grid-template-columns:repeat(4,1fr)}}
