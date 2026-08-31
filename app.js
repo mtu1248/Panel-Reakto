@@ -46,21 +46,47 @@ async function wczytaj(wymuszone) {
     return;
   }
   $('#odswiez').classList.add('spin');
-  try {
-    const arkusze = [];
-    const pomijaj = (u.pomijaj || []).map(x => x.trim().toLowerCase()).filter(Boolean);
-    for (let i = 0; i < zrodla.length; i++) {
-      const z = zrodla[i];
-      const nazwa = (z.nazwa || nazwaZUrl(z.url, i)).trim();
-      if (pomijaj.includes(nazwa.toLowerCase())) continue;
+
+  // Każde źródło pobierane jest niezależnie — awaria jednego (błąd sieci,
+  // pusty arkusz, chwilowy problem Google) nie może zablokować pozostałych.
+  // To samo podejście co w wersji na komputer.
+  const arkusze = [];
+  const diagnostyka = [];
+  const pomijaj = (u.pomijaj || []).map(x => x.trim().toLowerCase()).filter(Boolean);
+
+  for (let i = 0; i < zrodla.length; i++) {
+    const z = zrodla[i];
+    const nazwa = (z.nazwa || nazwaZUrl(z.url, i)).trim();
+    if (pomijaj.includes(nazwa.toLowerCase())) continue;
+    try {
       const csv = await pobierz(z.url);
-      arkusze.push({ nazwa, rows: parseCSV(csv) });
+      const rows = parseCSV(csv);
+      arkusze.push({ nazwa, rows });
+      diagnostyka.push({ nazwa, ok: true, znakow: csv.length, wierszy: rows.length });
+    } catch (e) {
+      diagnostyka.push({ nazwa, ok: false, blad: e.message, url: z.url });
+    }
+  }
+
+  try {
+    if (!arkusze.length) {
+      throw new Error('Żadne źródło nie odpowiedziało — zobacz listę poniżej.');
     }
     const d = przelicz(arkusze);
     d.odswiezanie_sek = (u.cykl || 5) * 60;
+    d.diagnostyka = diagnostyka;
     localStorage.setItem(DOM + 'dane', JSON.stringify(d));
     render(d);
     $('#alert').classList.add('hidden');
+    // Jeśli którekolwiek źródło zawiodło, a reszta wystarczyła do policzenia
+    // statystyk, informujemy o tym bez blokowania widoku.
+    const zle = diagnostyka.filter(x => !x.ok);
+    if (zle.length) {
+      $('#alert').textContent = 'Nie udało się pobrać: '
+        + zle.map(x => x.nazwa).join(', ') + '. Pokazane dane pochodzą z '
+        + 'pozostałych źródeł.';
+      $('#alert').classList.remove('hidden');
+    }
   } catch (e) {
     const z = cache();
     if (z) {
@@ -69,16 +95,36 @@ async function wczytaj(wymuszone) {
         + 'pobrania (' + (z.zaktualizowano || '—') + ').';
       $('#alert').classList.remove('hidden');
     } else {
-      $('#app').innerHTML = `<div class="card"><h3>Nie udało się pobrać danych</h3>
-        <p class="muted">${esc(e.message)}</p>
-        <p class="muted">Sprawdź, czy arkusz został opublikowany w internecie
-        (Plik → Udostępnij → Opublikuj w internecie → format CSV) i czy adres
-        w ustawieniach jest poprawny.</p></div>`;
-      $('#stamp').innerHTML = '<span>błąd pobierania</span>';
+      pokazBladPobierania(e, diagnostyka);
     }
   } finally {
     $('#odswiez').classList.remove('spin');
   }
+}
+
+function pokazBladPobierania(e, diagnostyka) {
+  $('#stamp').innerHTML = '<span>błąd pobierania</span>';
+  const wiersze = (diagnostyka || []).map(x => x.ok
+    ? `<tr><td>${esc(x.nazwa)}</td><td style="color:var(--green)">odebrano ${pl(x.znakow)} znaków, ${pl(x.wierszy)} wierszy — ale bez lotów</td></tr>`
+    : `<tr><td>${esc(x.nazwa)}</td><td style="color:var(--red)">${esc(x.blad)}</td></tr>`
+  ).join('');
+  $('#app').innerHTML = `<div class="card"><h3>Nie udało się pobrać danych</h3>
+    <p class="muted">${esc(e.message)}</p>
+    ${wiersze ? `<div class="tw"><table class="diag"><tbody>${wiersze}</tbody></table></div>` : ''}
+    <p class="muted" style="margin-top:12px">Najczęstsze przyczyny:</p>
+    <p class="muted">
+    <b>1.</b> Arkusz, do którego prowadzi adres, jest teraz pusty albo nie ma
+    w nim jeszcze żadnych lotów (np. dopiero co założona zakładka na nowy
+    miesiąc). Otwórz adres w Safari — jeśli pobrany plik CSV jest prawie
+    pusty, to jest przyczyna.<br>
+    <b>2.</b> Adres wskazuje na "cały dokument", a układ zakładek się zmienił.
+    Najpewniejsze rozwiązanie: opublikuj TĘ KONKRETNĄ zakładkę osobno
+    (Plik → Udostępnij → Opublikuj w internecie → wybierz zakładkę, nie
+    "Cały dokument" → CSV) i dodaj jej adres jako kolejną pozycję w
+    Ustawieniach, zamiast zastępować poprzedni.<br>
+    <b>3.</b> Chwilowy problem z siecią — spróbuj ponownie za chwilę.</p>
+    <button class="b pri" onclick="otworzUstawienia()">Otwórz ustawienia</button>
+    </div>`;
 }
 
 function pokazBrakKonfiguracji() {
@@ -266,9 +312,25 @@ function render(d) {
       </tbody></table></div>
     </div>`;
 
+  if (d.diagnostyka) {
+    const zle = d.diagnostyka.filter(x => !x.ok);
+    let h = '<label style="font-family:var(--head);font-size:12px;'
+      + 'font-weight:600;color:var(--navy)">Pobieranie źródeł</label>'
+      + '<table class="diag"><tbody>'
+      + d.diagnostyka.map(x => x.ok
+          ? `<tr><td>${esc(x.nazwa)}</td><td style="color:var(--green)">OK — ${pl(x.wierszy)} wierszy</td></tr>`
+          : `<tr><td>${esc(x.nazwa)}</td><td style="color:var(--red)">${esc(x.blad)}</td></tr>`)
+        .join('')
+      + '</tbody></table>';
+    if (zle.length) {
+      h += `<p class="muted" style="margin-top:6px">Adres źródła z błędem: `
+        + zle.map(x => `<code>${esc((x.url || '').slice(0, 46))}…</code>`).join(', ') + '</p>';
+    }
+    $('#stan').innerHTML = h;
+  }
   if (d.arkusze) {
-    $('#stan').innerHTML = '<label style="font-family:var(--head);font-size:12px;'
-      + 'font-weight:600;color:var(--navy)">Ostatnie wczytanie</label>'
+    $('#stan').innerHTML += '<label style="font-family:var(--head);font-size:12px;'
+      + 'font-weight:600;color:var(--navy);margin-top:10px;display:block">Rozpoznane loty</label>'
       + '<table class="diag"><tbody>'
       + d.arkusze.map(a => `<tr><td>${esc(a.arkusz)}</td><td>${pl(a.loty)} lotów</td>
           <td>${esc(a.zakres)}</td></tr>`).join('')
