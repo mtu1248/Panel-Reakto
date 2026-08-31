@@ -1,0 +1,70 @@
+/**
+ * PANEL STATYSTYK REAKTO — most danych dla aplikacji na iPhone/iPad.
+ *
+ * Ten skrypt udostępnia CAŁY skoroszyt (wszystkie zakładki naraz) jako
+ * jeden adres internetowy. Arkusz NIE musi być publikowany ani nawet
+ * udostępniony nikomu — skrypt czyta go z Twoimi własnymi uprawnieniami,
+ * a na zewnątrz wypuszcza tylko dane lotów.
+ *
+ * JAK WDROŻYĆ (raz, ok. 5 minut):
+ *   1. W arkuszu: Rozszerzenia → Apps Script.
+ *   2. Usuń całą domyślną zawartość edytora i wklej w to miejsce TEN plik.
+ *   3. W linii KLUCZ poniżej wpisz dowolny własny ciąg znaków zamiast
+ *      "zmien-to-haslo" — to prosty zamek, żeby adresu nie dało się
+ *      przypadkiem odgadnąć. Zapamiętaj go, będzie potrzebny w telefonie.
+ *   4. Zapisz (ikona dyskietki).
+ *   5. Wdróż → Nowe wdrożenie → (koło zębate) → Aplikacja internetowa.
+ *      Wykonaj jako: Ja.  Kto ma dostęp: Każdy.
+ *   6. Kliknij Wdróż. Google poprosi o autoryzację — to Twój własny
+ *      skrypt na Twoim koncie, zezwól (może pojawić się ostrzeżenie
+ *      "aplikacja niezweryfikowana" — to normalne dla własnych skryptów,
+ *      kliknij Zaawansowane → Przejdź do... → Zezwól).
+ *   7. Skopiuj adres "Aplikacja internetowa" (kończy się na /exec).
+ *      Dopisz na końcu:  ?key=TWÓJ_KLUCZ_Z_KROKU_3
+ *   8. Ten cały adres wklej w aplikacji na telefonie: Ustawienia →
+ *      "Adres źródła danych".
+ *
+ * SPRAWDZENIE: wklej gotowy adres (z ?key=...) w Safari. Powinieneś
+ * zobaczyć surowy tekst zaczynający się od {"arkusze":[... — to znaczy,
+ * że działa.
+ *
+ * AKTUALIZACJA W PRZYSZŁOŚCI: jeśli kiedyś zmienisz coś w tym skrypcie,
+ * użyj Wdróż → Zarządzaj wdrożeniami → ✎ (edytuj) → Nowa wersja → Wdróż.
+ * "Nowe wdrożenie" utworzyłoby inny adres — "Zarządzaj wdrożeniami"
+ * zachowuje ten sam.
+ */
+
+var KLUCZ = 'zmien-to-haslo';
+
+function doGet(e) {
+  var podanyKlucz = (e && e.parameter && e.parameter.key) || '';
+  if (KLUCZ && podanyKlucz !== KLUCZ) {
+    return odpowiedz_({ blad: 'Nieprawidłowy lub brakujący klucz dostępu (?key=...).' });
+  }
+  try {
+    var skoroszyt = SpreadsheetApp.getActiveSpreadsheet();
+    var arkusze = [];
+    var listaArkuszy = skoroszyt.getSheets();
+    for (var i = 0; i < listaArkuszy.length; i++) {
+      var sh = listaArkuszy[i];
+      var zakres = sh.getDataRange();
+      if (zakres.getNumRows() < 1 || zakres.getNumColumns() < 1) continue;
+      arkusze.push({
+        nazwa: sh.getName(),
+        // getDisplayValues() zwraca to, co widać na ekranie (same teksty),
+        // dokładnie tak jak eksport CSV — bez tego liczby i daty
+        // przychodziłyby jako inne typy danych i psuły rozpoznawanie.
+        rows: zakres.getDisplayValues()
+      });
+    }
+    return odpowiedz_({ arkusze: arkusze });
+  } catch (blad) {
+    return odpowiedz_({ blad: 'Błąd skryptu: ' + String(blad) });
+  }
+}
+
+function odpowiedz_(dane) {
+  return ContentService
+    .createTextOutput(JSON.stringify(dane))
+    .setMimeType(ContentService.MimeType.JSON);
+}

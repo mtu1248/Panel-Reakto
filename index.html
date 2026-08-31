@@ -31,14 +31,14 @@
 <div class="sheet hidden" id="sheet">
   <div class="sheet-b">
     <h2>Ustawienia</h2>
-    <p class="muted">Wklej adresy arkuszy opublikowanych w sieci w formacie CSV.
-      W Arkuszach Google: <b>Plik → Udostępnij → Opublikuj w internecie</b>,
-      wybierz zakładkę, format <b>CSV</b>, a potem <b>Opublikuj</b>.</p>
+    <p class="muted">Wklej adres wygenerowany przez skrypt w Twoim arkuszu.
+      Jeden link wystarczy — obejmuje wszystkie zakładki, dokładnie jak
+      wersja na komputer. Jak go zdobyć: sekcja "SKĄD WZIĄĆ ADRES"
+      w pliku CZYTAJ_TO_NAJPIERW.txt.</p>
 
     <div class="fld">
-      <label>Arkusze — adresy CSV</label>
-      <div id="lista"></div>
-      <button class="b sec" id="dodaj">+ Dodaj arkusz</button>
+      <label>Adres źródła danych</label>
+      <input id="glowny" placeholder="https://script.google.com/macros/s/…/exec">
     </div>
 
     <div class="fld">
@@ -46,9 +46,23 @@
       <input id="cykl" type="number" min="1" max="240" inputmode="numeric">
     </div>
 
-    <div class="fld">
-      <label>Pomijaj arkusze — nazwy po przecinku</label>
-      <input id="pomijaj" placeholder="np. Kopia, Wzór">
+    <p class="sec-t" id="zaawToggle" onclick="this.classList.toggle('open');
+        document.getElementById('zaawBox').classList.toggle('open')">
+      <span class="caret">▸</span>Opcje zaawansowane
+    </p>
+    <div id="zaawBox" class="coll">
+      <p class="muted" style="margin-top:0">Więcej niż jedno źródło (np. osobno
+        opublikowane zakładki CSV zamiast skryptu) albo pomijanie wybranych
+        zakładek.</p>
+      <div class="fld">
+        <label>Dodatkowe źródła</label>
+        <div id="lista"></div>
+        <button class="b sec" id="dodaj">+ Dodaj kolejne źródło</button>
+      </div>
+      <div class="fld">
+        <label>Pomijaj zakładki — nazwy po przecinku</label>
+        <input id="pomijaj" placeholder="np. Kopia, Wzór">
+      </div>
     </div>
 
     <div id="stan"></div>

@@ -56,15 +56,41 @@ async function wczytaj(wymuszone) {
 
   for (let i = 0; i < zrodla.length; i++) {
     const z = zrodla[i];
-    const nazwa = (z.nazwa || nazwaZUrl(z.url, i)).trim();
-    if (pomijaj.includes(nazwa.toLowerCase())) continue;
+    const nazwaZrodla = (z.nazwa || nazwaZUrl(z.url, i)).trim();
     try {
-      const csv = await pobierz(z.url);
-      const rows = parseCSV(csv);
-      arkusze.push({ nazwa, rows });
-      diagnostyka.push({ nazwa, ok: true, znakow: csv.length, wierszy: rows.length });
+      const tekst = await pobierz(z.url);
+      // Adres Apps Script zwraca JSON z CAŁYM skoroszytem naraz — jeden
+      // wpis w ustawieniach rozwija się wtedy na wiele zakładek, dokładnie
+      // jak wersja na komputer. Zwykły opublikowany CSV (stary sposób)
+      // nadal działa bez zmian — rozpoznanie jest automatyczne.
+      let dopisane = 0;
+      let json = null;
+      try { json = JSON.parse(tekst); } catch (e) { /* to zwykły CSV, nie JSON */ }
+
+      if (json && Array.isArray(json.arkusze)) {
+        for (const ark of json.arkusze) {
+          const nazwa = (ark.nazwa || nazwaZrodla).trim();
+          if (pomijaj.includes(nazwa.toLowerCase())) continue;
+          const rows = ark.rows || [];
+          arkusze.push({ nazwa, rows });
+          diagnostyka.push({ nazwa, ok: true, znakow: tekst.length, wierszy: rows.length });
+          dopisane++;
+        }
+        if (!dopisane && !json.arkusze.length) {
+          diagnostyka.push({ nazwa: nazwaZrodla, ok: false,
+            blad: 'Skrypt odpowiedział, ale skoroszyt nie ma żadnych zakładek z danymi.' });
+        }
+      } else if (json && json.blad) {
+        // Skrypt Apps Script sam zgłosił błąd (np. zły klucz dostępu)
+        diagnostyka.push({ nazwa: nazwaZrodla, ok: false, blad: String(json.blad) });
+      } else {
+        if (pomijaj.includes(nazwaZrodla.toLowerCase())) continue;
+        const rows = parseCSV(tekst);
+        arkusze.push({ nazwa: nazwaZrodla, rows });
+        diagnostyka.push({ nazwa: nazwaZrodla, ok: true, znakow: tekst.length, wierszy: rows.length });
+      }
     } catch (e) {
-      diagnostyka.push({ nazwa, ok: false, blad: e.message, url: z.url });
+      diagnostyka.push({ nazwa: nazwaZrodla, ok: false, blad: e.message, url: z.url });
     }
   }
 
@@ -352,12 +378,17 @@ function wierszZrodla(nazwa, url) {
 
 function otworzUstawienia() {
   const u = ust();
+  const wszystkie = u.arkusze || [];
   const l = $('#lista');
   l.innerHTML = '';
-  (u.arkusze || []).forEach(a => l.appendChild(wierszZrodla(a.nazwa, a.url)));
-  if (!l.children.length) l.appendChild(wierszZrodla('', ''));
+  $('#glowny').value = wszystkie[0] ? wszystkie[0].url : '';
+  wszystkie.slice(1).forEach(a => l.appendChild(wierszZrodla(a.nazwa, a.url)));
   $('#cykl').value = u.cykl || 5;
   $('#pomijaj').value = (u.pomijaj || []).join(', ');
+  if (wszystkie.length > 1) {
+    $('#zaawToggle').classList.add('open');
+    $('#zaawBox').classList.add('open');
+  }
   $('#sheet').classList.remove('hidden');
 }
 
@@ -366,9 +397,13 @@ $('#zamknij').onclick = () => $('#sheet').classList.add('hidden');
 $('#dodaj').onclick = () => $('#lista').appendChild(wierszZrodla('', ''));
 $('#odswiez').onclick = () => wczytaj(true);
 $('#zapisz').onclick = () => {
-  const arkusze = [...$('#lista').querySelectorAll('.src-r')]
-    .map((r, i) => ({ nazwa: 'Arkusz ' + (i + 1), url: r.querySelector('.u').value.trim() }))
-    .filter(a => a.url);
+  const arkusze = [];
+  const glowny = $('#glowny').value.trim();
+  if (glowny) arkusze.push({ nazwa: '', url: glowny });
+  [...$('#lista').querySelectorAll('.src-r')].forEach((r, i) => {
+    const url = r.querySelector('.u').value.trim();
+    if (url) arkusze.push({ nazwa: 'Źródło ' + (i + 2), url });
+  });
   zapiszUst({
     arkusze,
     cykl: Number($('#cykl').value) || 5,
