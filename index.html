@@ -31,19 +31,21 @@
 <div class="sheet hidden" id="sheet">
   <div class="sheet-b">
     <h2>Ustawienia</h2>
-    <p class="muted">Wklej adres wygenerowany przez skrypt w Twoim arkuszu.
-      Jeden link wystarczy — obejmuje wszystkie zakładki, dokładnie jak
-      wersja na komputer. Jak go zdobyć: sekcja "SKĄD WZIĄĆ ADRES"
-      w pliku CZYTAJ_TO_NAJPIERW.txt.</p>
+    <p class="muted">Wklej zwykły adres arkusza Google — ten sam, który
+      otwierasz w przeglądarce. Jeden link wystarczy: pobierany jest cały
+      skoroszyt ze wszystkimi zakładkami, dokładnie jak w wersji na komputer.</p>
 
     <div class="fld">
-      <label>Adres źródła danych</label>
-      <input id="glowny" placeholder="https://script.google.com/macros/s/…/exec">
+      <label>Adres arkusza Google</label>
+      <input id="glowny" placeholder="https://docs.google.com/spreadsheets/d/…">
     </div>
 
     <div class="fld">
       <label>Odświeżanie co (minut)</label>
       <input id="cykl" type="number" min="1" max="240" inputmode="numeric">
+      <p class="muted" style="margin:6px 0 0">Każde odświeżenie pobiera cały
+        skoroszyt (ok. 1 MB). Przy transmisji komórkowej rozsądne jest
+        10–15 minut; aplikacja i tak odświeża się przy każdym powrocie do niej.</p>
     </div>
 
     <p class="sec-t" id="zaawToggle" onclick="this.classList.toggle('open');
@@ -51,9 +53,9 @@
       <span class="caret">▸</span>Opcje zaawansowane
     </p>
     <div id="zaawBox" class="coll">
-      <p class="muted" style="margin-top:0">Więcej niż jedno źródło (np. osobno
-        opublikowane zakładki CSV zamiast skryptu) albo pomijanie wybranych
-        zakładek.</p>
+      <p class="muted" style="margin-top:0">Drugi skoroszyt (np. osobny plik na
+        nowy rok), stary adres CSV lub skryptu, albo pomijanie wybranych
+        zakładek — np. kopii roboczych.</p>
       <div class="fld">
         <label>Dodatkowe źródła</label>
         <div id="lista"></div>
@@ -72,6 +74,7 @@
   </div>
 </div>
 
+<script src="xlsx.js"></script>
 <script src="analiza.js"></script>
 <script src="app.js"></script>
 </body>

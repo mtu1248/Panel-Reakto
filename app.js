@@ -1,7 +1,8 @@
 /* Panel Statystyk REAKTO — warstwa aplikacji.
-   Pobiera arkusze wprost z Arkuszy Google (opublikowane jako CSV),
-   liczy statystyki na urządzeniu i zapamiętuje ostatni wynik,
-   żeby działać także bez połączenia. */
+   Pobiera CAŁY skoroszyt wprost z Arkuszy Google (ten sam plik XLSX, który
+   ściąga wersja na Maca), rozpakowuje go na urządzeniu, liczy statystyki
+   i zapamiętuje ostatni wynik, żeby działać także bez połączenia.
+   Jeden wklejony adres arkusza obejmuje wszystkie zakładki i miesiące. */
 
 const KOLORY = {
   'Wilgotność': '#E9A13B', 'Deszcz': '#2E6FA8', 'Wiatr': '#9BC7DE',
@@ -34,6 +35,12 @@ async function pobierz(url) {
   return await r.text();
 }
 
+async function pobierzPlik(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return await r.arrayBuffer();
+}
+
 function nazwaZUrl(u, i) {
   return 'Arkusz ' + (i + 1);
 }
@@ -58,6 +65,28 @@ async function wczytaj(wymuszone) {
     const z = zrodla[i];
     const nazwaZrodla = (z.nazwa || nazwaZUrl(z.url, i)).trim();
     try {
+      // Zwykły link do arkusza Google — pobieramy cały skoroszyt jako plik
+      // XLSX, dokładnie tą samą drogą co aplikacja na Maca. Jeden adres
+      // rozwija się na wszystkie zakładki.
+      const id = idArkusza(z.url);
+      if (id) {
+        const buf = await pobierzPlik(adresXLSX(id));
+        const zakladki = await czytajXLSX(buf);
+        let dodane = 0;
+        for (const ark of zakladki) {
+          if (pomijaj.includes((ark.nazwa || '').toLowerCase())) continue;
+          arkusze.push({ nazwa: ark.nazwa, rows: ark.rows });
+          diagnostyka.push({ nazwa: ark.nazwa, ok: true,
+            znakow: buf.byteLength, wierszy: ark.rows.length });
+          dodane++;
+        }
+        if (!dodane) {
+          diagnostyka.push({ nazwa: nazwaZrodla, ok: false, url: z.url,
+            blad: 'Skoroszyt pobrany, ale nie ma w nim żadnej zakładki z danymi.' });
+        }
+        continue;
+      }
+
       const tekst = await pobierz(z.url);
       // Adres Apps Script zwraca JSON z CAŁYM skoroszytem naraz — jeden
       // wpis w ustawieniach rozwija się wtedy na wiele zakładek, dokładnie
@@ -99,7 +128,7 @@ async function wczytaj(wymuszone) {
       throw new Error('Żadne źródło nie odpowiedziało — zobacz listę poniżej.');
     }
     const d = przelicz(arkusze);
-    d.odswiezanie_sek = (u.cykl || 5) * 60;
+    d.odswiezanie_sek = (u.cykl || 10) * 60;
     d.diagnostyka = diagnostyka;
     localStorage.setItem(DOM + 'dane', JSON.stringify(d));
     render(d);
@@ -139,16 +168,15 @@ function pokazBladPobierania(e, diagnostyka) {
     ${wiersze ? `<div class="tw"><table class="diag"><tbody>${wiersze}</tbody></table></div>` : ''}
     <p class="muted" style="margin-top:12px">Najczęstsze przyczyny:</p>
     <p class="muted">
-    <b>1.</b> Arkusz, do którego prowadzi adres, jest teraz pusty albo nie ma
-    w nim jeszcze żadnych lotów (np. dopiero co założona zakładka na nowy
-    miesiąc). Otwórz adres w Safari — jeśli pobrany plik CSV jest prawie
-    pusty, to jest przyczyna.<br>
-    <b>2.</b> Adres wskazuje na "cały dokument", a układ zakładek się zmienił.
-    Najpewniejsze rozwiązanie: opublikuj TĘ KONKRETNĄ zakładkę osobno
-    (Plik → Udostępnij → Opublikuj w internecie → wybierz zakładkę, nie
-    "Cały dokument" → CSV) i dodaj jej adres jako kolejną pozycję w
-    Ustawieniach, zamiast zastępować poprzedni.<br>
-    <b>3.</b> Chwilowy problem z siecią — spróbuj ponownie za chwilę.</p>
+    <b>1.</b> Arkusz przestał być udostępniony przez link. Otwórz go w Safari
+    w trybie prywatnym — jeśli prosi o logowanie, właściciel zmienił
+    udostępnianie i trzeba je przywrócić („każda osoba mająca link —
+    przeglądający”).<br>
+    <b>2.</b> Wklejony adres nie jest adresem arkusza Google. Powinien
+    zawierać fragment <code>/spreadsheets/d/</code>.<br>
+    <b>3.</b> Za stary system — rozpakowanie skoroszytu wymaga iOS 16.4
+    lub nowszego.<br>
+    <b>4.</b> Chwilowy brak sieci — spróbuj ponownie za chwilę.</p>
     <button class="b pri" onclick="otworzUstawienia()">Otwórz ustawienia</button>
     </div>`;
 }
@@ -157,13 +185,17 @@ function pokazBrakKonfiguracji() {
   $('#stamp').innerHTML = '<span>brak konfiguracji</span>';
   $('#app').innerHTML = `<div class="card">
     <h3>Zacznij od podania arkusza</h3>
-    <p class="muted">Aplikacja pobiera dane wprost z Arkuszy Google — nie potrzebuje
-    komputera ani serwera.</p>
-    <p class="muted"><b>1.</b> W Arkuszach Google otwórz plik z realizacją lotów.<br>
-    <b>2.</b> Menu <b>Plik → Udostępnij → Opublikuj w internecie</b>.<br>
-    <b>3.</b> Wybierz zakładkę z danymi, format <b>Wartości rozdzielane przecinkami (.csv)</b>.<br>
-    <b>4.</b> Kliknij <b>Opublikuj</b> i skopiuj adres.<br>
-    <b>5.</b> Wklej go w ustawieniach poniżej.</p>
+    <p class="muted">Aplikacja pobiera cały skoroszyt wprost z Arkuszy Google —
+    tak samo jak wersja na komputer. Nie potrzebuje Maca, serwera ani
+    publikowania arkusza.</p>
+    <p class="muted"><b>1.</b> Otwórz arkusz z realizacją lotów (w Arkuszach
+    Google albo w Safari).<br>
+    <b>2.</b> Skopiuj jego adres — wystarczy zwykły link „Udostępnij” albo
+    adres z paska przeglądarki.<br>
+    <b>3.</b> Wklej go w ustawieniach poniżej i zapisz.</p>
+    <p class="muted">Jeden adres obejmuje wszystkie zakładki i wszystkie
+    miesiące. Warunek: arkusz musi być udostępniony „każda osoba mająca
+    link — przeglądający” (tak jest dziś ustawiony).</p>
     <button class="b pri" onclick="otworzUstawienia()">Otwórz ustawienia</button>
   </div>`;
 }
@@ -370,7 +402,7 @@ function render(d) {
 function wierszZrodla(nazwa, url) {
   const d = document.createElement('div');
   d.className = 'src-r';
-  d.innerHTML = `<input class="u" placeholder="adres CSV arkusza" value="${esc(url || '')}">
+  d.innerHTML = `<input class="u" placeholder="adres kolejnego arkusza" value="${esc(url || '')}">
     <button type="button">×</button>`;
   d.querySelector('button').onclick = () => d.remove();
   return d;
@@ -383,7 +415,7 @@ function otworzUstawienia() {
   l.innerHTML = '';
   $('#glowny').value = wszystkie[0] ? wszystkie[0].url : '';
   wszystkie.slice(1).forEach(a => l.appendChild(wierszZrodla(a.nazwa, a.url)));
-  $('#cykl').value = u.cykl || 5;
+  $('#cykl').value = u.cykl || 10;
   $('#pomijaj').value = (u.pomijaj || []).join(', ');
   if (wszystkie.length > 1) {
     $('#zaawToggle').classList.add('open');
@@ -406,7 +438,7 @@ $('#zapisz').onclick = () => {
   });
   zapiszUst({
     arkusze,
-    cykl: Number($('#cykl').value) || 5,
+    cykl: Number($('#cykl').value) || 10,
     pomijaj: $('#pomijaj').value.split(',').map(x => x.trim()).filter(Boolean),
   });
   $('#sheet').classList.add('hidden');
