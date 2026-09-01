@@ -287,6 +287,18 @@ function sumuj(doby, klucze) {
   return w;
 }
 
+/* Ile miejsc na loty (wierszy/kolumn LP) jest zdefiniowanych w arkuszu dla
+   danej doby — licząc też jeszcze puste komórki. Odpowiednik potencjal_doby()
+   z analiza.py — zobacz tam pełny opis i uzasadnienie. */
+function potencjalDoby(loty, dat) {
+  const widziane = new Set();
+  for (const rek of loty) {
+    if (rek[0] !== dat) continue;
+    widziane.add(kluczLokalizacji(rek[1]) + '|' + rek[2]);
+  }
+  return widziane.size;
+}
+
 /* ---------- złożenie pełnego zestawu danych ---------- */
 function przelicz(arkusze) {
   let loty = [], zdarz = [], interw = [];
@@ -331,8 +343,14 @@ function przelicz(arkusze) {
   });
 
   const wBiez = sumuj(doby, [biezaca]);
+  // Jezeli w arkuszu przybylo lotow dla lokalizacji (np. zwiekszenie liczby
+  // lotow na dobe), dwie pierwsze wartosci tego jeszcze nie widza - opieraja
+  // sie na dobach juz zamknietych. Dokladamy wiec realna liczbe miejsc na
+  // loty zdefiniowana w arkuszu na dzis, zeby 100% od razu odzwierciedlalo
+  // nowa liczbe lotow, zamiast czekac do jutra.
   const nominal = Math.max(
-    ...zamkniete.slice(-7).map(k => sumuj(doby, [k]).plan), wBiez.plan, 0);
+    ...zamkniete.slice(-7).map(k => sumuj(doby, [k]).plan),
+    wBiez.plan, potencjalDoby(loty, biezaca), 0);
 
   const miesAgg = new Map();
   zamkniete.forEach(k => {
