@@ -16,7 +16,7 @@
 
 <div class="top">
   <img src="ikona-180.png" alt="">
-  <div class="tt"><b>Centrum Operacyjne</b><span>REAKTO — statystyki lotów</span></div>
+  <div class="tt"><b>Centrum Operacyjne</b><span>REAKTO — statystyki lotów · v3.0</span></div>
   <button class="tbtn" id="odswiez" aria-label="Odśwież">&#8635;</button>
   <button class="tbtn" id="ustaw" aria-label="Ustawienia">&#9881;</button>
 </div>
@@ -65,6 +65,19 @@
         <label>Pomijaj zakładki — nazwy po przecinku</label>
         <input id="pomijaj" placeholder="np. Kopia, Wzór">
       </div>
+    </div>
+
+    <p class="sec-t" id="obToggle" onclick="this.classList.toggle('open');
+        document.getElementById('obBox').classList.toggle('open')">
+      <span class="caret">▸</span>Obiekty — okres obsługi i liczba lotów
+    </p>
+    <div id="obBox" class="coll">
+      <p class="muted" style="margin-top:0">Daty to dzień, w którym zaczyna się
+        noc: ostatnia doba 26.10 = noc 26/27.10. Doby obiektu spoza okresu nie
+        wchodzą do statystyk, choć wiersze zostają w arkuszu. Liczba lotów
+        od danej doby ustala „Zaplanowane” na bieżącej dobie. Ustawienia
+        zapisują się na tym urządzeniu — wpisz je tak samo jak w panelu na Macu.</p>
+      <div id="obiekty"></div>
     </div>
 
     <div id="stan"></div>

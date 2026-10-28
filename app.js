@@ -23,6 +23,37 @@ function ust() {
   catch (e) { return {}; }
 }
 function zapiszUst(u) { localStorage.setItem(DOM + 'ust', JSON.stringify(u)); }
+/* Okres obsługi i harmonogram obiektów (3.0, jak desktop 3.8) — na
+   urządzeniu. Brak klucza = pierwsze uruchomienie 3.0: wchodzi wzorzec
+   (INPOST — ostatnia doba 26.10). Klucz obecny zostaje, nawet pusty. */
+function obiektyUst() {
+  const u = ust();
+  if (u.obiekty === undefined) return JSON.parse(JSON.stringify(OBIEKTY_WZORCOWE));
+  return u.obiekty || {};
+}
+
+/* Wybrany obiekt (pusty = całe Centrum) i surowe rekordy w pamięci —
+   przełączenie obiektu albo zapis ustawień nie pobiera arkusza ponownie. */
+let LOK = '';
+try { LOK = localStorage.getItem(DOM + 'lok') || ''; } catch (e) { LOK = ''; }
+let REK = null;
+function ustawLok(v) {
+  LOK = v || '';
+  try { LOK ? localStorage.setItem(DOM + 'lok', LOK) : localStorage.removeItem(DOM + 'lok'); } catch (e) {}
+}
+function przeliczZPamieci() {
+  if (!REK) return wczytaj(true);
+  try {
+    const d = przelicz(REK, obiektyUst(), LOK);
+    if (LOK && !d.lokalizacja) { ustawLok(''); return przeliczZPamieci(); }
+    const stare = cache() || {};
+    d.odswiezanie_sek = stare.odswiezanie_sek; d.diagnostyka = stare.diagnostyka;
+    d.zaktualizowano = stare.zaktualizowano || d.zaktualizowano;
+    localStorage.setItem(DOM + 'dane', JSON.stringify(d));
+    render(d);
+  } catch (e) { wczytaj(true); }
+}
+
 function cache() {
   try { return JSON.parse(localStorage.getItem(DOM + 'dane')); }
   catch (e) { return null; }
@@ -127,7 +158,10 @@ async function wczytaj(wymuszone) {
     if (!arkusze.length) {
       throw new Error('Żadne źródło nie odpowiedziało — zobacz listę poniżej.');
     }
-    const d = przelicz(arkusze);
+    REK = rekordyZArkuszy(arkusze);
+    let d = przelicz(REK, obiektyUst(), LOK);
+    // zapamiętany obiekt zniknął z arkusza — wracamy do całości
+    if (LOK && !d.lokalizacja) { ustawLok(''); d = przelicz(REK, obiektyUst(), ''); }
     d.odswiezanie_sek = (u.cykl || 10) * 60;
     d.diagnostyka = diagnostyka;
     localStorage.setItem(DOM + 'dane', JSON.stringify(d));
@@ -203,7 +237,10 @@ function pokazBrakKonfiguracji() {
 /* ---------- karty ---------- */
 function kartaDoby(d) {
   const nom = d.nominal || d.plan;
-  const ok = d.ok, niew = d.niew, czeka = Math.max(0, nom - ok - niew);
+  // od 3.0 `ok` zawiera LPD; „oczekuje” liczymy z samego harmonogramu
+  const ok = d.ok, niew = d.niew;
+  const okLp = d.ok_lp != null ? d.ok_lp : ok - (d.dod || 0);
+  const czeka = Math.max(0, nom - okLp - niew);
   const p = n => nom ? (100 * n / nom) : 0;
   const w = (nazwa, n, kolor, zProc) => `<div class="dr">
       <span class="dot" style="background:${kolor}"></span>
@@ -213,10 +250,11 @@ function kartaDoby(d) {
   return `<div class="card">
     <h3>${esc(d.tytul)}</h3><div class="sub">${esc(d.opis)}</div>
     ${w('Zaplanowane', nom, '#132F55', false)}
-    ${w('Wykonane', ok, '#27B0D8', true)}
+    ${w(d.dod ? 'Wykonane (z LPD)' : 'Wykonane', ok, '#27B0D8', true)}
     ${w('Niewykonane', niew, '#D9534F', true)}
     ${w('Oczekuje na wykonanie', czeka, '#C9D6E5', true)}
-    <div class="bar"><i class="ok" style="width:${p(ok)}%"></i>
+    ${d.dod ? w('w tym dodatkowe (LPD)', d.dod, '#229668', false) : ''}
+    <div class="bar"><i class="ok" style="width:${Math.min(100, p(ok))}%"></i>
       <i class="nw" style="width:${p(niew)}%"></i></div>
     ${miniAlt(d)}${przyczyny(d)}</div>`;
 }
@@ -239,12 +277,21 @@ function przyczyny(d) {
     <span class="n">${v}</span></div>`).join('')}</div>`;
 }
 
+// 1 dodatkowy, 2–4 dodatkowe, 5+ dodatkowych (12–14 też „dodatkowych”)
+function odmDod(n) {
+  if (n === 1) return 'dodatkowy';
+  const j = n % 10, d = n % 100;
+  return (j >= 2 && j <= 4 && !(d >= 12 && d <= 14)) ? 'dodatkowe' : 'dodatkowych';
+}
+
 function karta(d, akcent) {
   return `<div class="card">
     <h3>${esc(d.tytul)}</h3><div class="sub">${esc(d.opis)}</div>
     <div class="big ${akcent ? 'cy' : ''}">${proc(d.proc)}</div>
-    <div class="bsub">${pl(d.ok)} z ${pl(d.plan)} lotów zrealizowanych</div>
+    <div class="bsub">${pl(d.ok)} z ${pl(d.plan)} lotów zrealizowanych${
+      d.dod ? ` <b class="gr">(w tym ${pl(d.dod)} ${odmDod(d.dod)} — LPD)</b>` : ''}</div>
     <div class="bar"><i class="ok" style="width:${Math.min(100, d.proc)}%"></i></div>
+    ${d.dod && d.proc_lp != null ? `<div class="bsub">sam harmonogram, bez LPD: <b>${proc(d.proc_lp)}</b></div>` : ''}
     <div class="mini">
       <div><b>${pl(d.niew)}</b><span>niezrealizowane</span></div>
       <div><b>${pl(d.pogoda)}</b><span>pogoda</span></div>
@@ -305,9 +352,17 @@ function render(d) {
     PETLA = setInterval(() => wczytaj(true), Math.max(60, d.odswiezanie_sek) * 1000);
   }
 
+  const wy = d.lokalizacja || null;
+  const etyk = x => esc(x.nazwa) + (x.status === 'zakonczony' && x.do
+    ? ' — zakończony (ostatnia noc ' + esc(nocZ(x.do)) + ')' : '');
   $('#app').innerHTML = `
-    <div class="kicker">Stan bieżący</div>
-    <h2>Realizacja lotów</h2>
+    ${(d.lokalizacje || []).length ? `<div class="lokw">
+      <select id="lokSel" aria-label="Zakres danych">
+        <option value="">Całe Centrum Operacyjne</option>
+        ${d.lokalizacje.map(x => `<option value="${esc(x.klucz)}"${wy && wy.klucz === x.klucz ? ' selected' : ''}>${etyk(x)}</option>`).join('')}
+      </select></div>` : ''}
+    <div class="kicker">${wy ? 'Wybrany obiekt' : 'Stan bieżący'}</div>
+    <h2>${wy ? esc(wy.nazwa) : 'Realizacja lotów'}</h2>
     <div class="cards">
       ${kartaDoby(d.karty.doba)}
       ${karta(d.karty.tydzien, true)}
@@ -318,10 +373,10 @@ function render(d) {
     <h2>Ostatnie doby zamknięte</h2>
     <div class="card">${wykres(d.przebieg, x => x.etykieta, x => x.ok, x => x.plan)}</div>
 
-    <div class="kicker">Podział na obiekty</div>
+    ${wy ? '' : `<div class="kicker">Podział na obiekty</div>
     <h2>Lokalizacje</h2>
     <div class="card"><h3>Narastająco w miesiącu</h3>${tabelaLok(d.karty.miesiac.lok)}</div>
-    <div class="card"><h3>Ostatni tydzień</h3>${tabelaLok(d.karty.tydzien.lok)}</div>
+    <div class="card"><h3>Ostatni tydzień</h3>${tabelaLok(d.karty.tydzien.lok)}</div>`}
 
     <div class="kicker">Ciągłość usługi</div>
     <h2>Objazdy i loty ręczne</h2>
@@ -346,29 +401,32 @@ function render(d) {
       <p class="muted" style="margin:0 0 11px">Kolumna „arkusz” pokazuje, skąd pochodzą
       loty danej doby. Dotknij wiersza, aby zobaczyć rozbicie na lokalizacje.</p>
       <div class="tw"><table>
-        <thead><tr><th>Doba</th><th>Plan</th><th>Wyk.</th><th>Niewyk.</th><th>Pogoda</th>
+        <thead><tr><th>Doba</th><th>Plan</th><th>Wyk.</th><th>w tym LPD</th><th>Niewyk.</th><th>Pogoda</th>
           <th>Techn.</th><th>KP</th><th>Ręczne</th><th>Objazdy</th><th>Interw.</th>
           <th style="text-align:left">Arkusz</th></tr></thead><tbody>
         ${(d.kontrola || []).map((x, i) => `<tr class="row-d ${x.biezaca ? 'bz' : ''}"
             onclick="document.getElementById('lk${i}').classList.toggle('open')">
           <td>${esc(x.doba)}</td><td>${pl(x.plan)}</td><td>${pl(x.ok)}</td>
-          <td>${pl(x.niew)}</td><td>${pl(x.pogoda)}</td><td>${pl(x.technika)}</td>
+          <td>${pl(x.dod)}</td><td>${pl(x.niew)}</td><td>${pl(x.pogoda)}</td><td>${pl(x.technika)}</td>
           <td>${pl(x.kp)}</td><td>${pl(x.man)}</td><td>${pl(x.objazdy)}</td>
           <td>${pl(x.interw)}</td>
           <td class="src">${esc(x.zrodla || '—')}</td></tr>
-        <tr id="lk${i}" class="lok-r"><td colspan="11">
-          ${(x.lok || []).map(l => `<span class="lchip"><b>${esc(l.nazwa)}</b>${l.ok}/${l.plan}</span>`).join('')}
+        <tr id="lk${i}" class="lok-r"><td colspan="12">
+          ${(x.lok || []).map(l => `<span class="lchip"><b>${esc(l.nazwa)}</b>${l.ok}/${l.plan}${l.dod ? ' (LPD ' + l.dod + ')' : ''}</span>`).join('')}
         </td></tr>`).join('')}
         ${(() => {
           const z = (d.kontrola || []).filter(x => !x.biezaca);
           const s = f => z.reduce((a, x) => a + x[f], 0);
           return `<tr class="total"><td>RAZEM (zamknięte)</td><td>${pl(s('plan'))}</td>
-            <td>${pl(s('ok'))}</td><td>${pl(s('niew'))}</td><td>${pl(s('pogoda'))}</td>
+            <td>${pl(s('ok'))}</td><td>${pl(s('dod'))}</td><td>${pl(s('niew'))}</td><td>${pl(s('pogoda'))}</td>
             <td>${pl(s('technika'))}</td><td>${pl(s('kp'))}</td><td>${pl(s('man'))}</td>
             <td>${pl(s('objazdy'))}</td><td>${pl(s('interw'))}</td><td></td></tr>`;
         })()}
       </tbody></table></div>
     </div>`;
+  const sel = $('#lokSel');
+  if (sel) sel.onchange = () => { ustawLok(sel.value); przeliczZPamieci(); window.scrollTo(0, 0); };
+  OSTATNIE = d;
 
   if (d.diagnostyka) {
     const zle = d.diagnostyka.filter(x => !x.ok);
@@ -398,6 +456,74 @@ function render(d) {
   }
 }
 
+/* ---------- ustawienia obiektów ---------- */
+let OSTATNIE = null;
+function nocZ(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00'), n = new Date(d.getTime() + 864e5);
+  const p = x => String(x).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(n.getDate()) + '.' + p(n.getMonth() + 1);
+}
+const ST = { aktywny: 'aktywny', zakonczony: 'zakończony', planowany: 'jeszcze nie ruszył' };
+
+function wierszZm(z) {
+  return `<div class="ob-zm"><input type="date" data-z="od" value="${esc(z.od || '')}" aria-label="od doby">
+    <input type="number" min="1" inputmode="numeric" data-z="loty" value="${esc(z.loty || '')}" placeholder="lotów/dobę">
+    <button type="button" class="ob-x">×</button></div>`;
+}
+
+function rysujObiekty() {
+  const box = $('#obiekty');
+  const lista = (OSTATNIE && OSTATNIE.obiekty) || [];
+  if (!lista.length) { box.innerHTML = '<p class="muted">Lista pojawi się po pierwszym pobraniu danych.</p>'; return; }
+  const ustOb = obiektyUst();
+  box.innerHTML = lista.map(o => {
+    const u = ustOb[o.klucz] || { od: null, do: null, zmiany: [] };
+    return `<details class="ob" data-klucz="${esc(o.klucz)}" data-nazwa="${esc(o.nazwa)}">
+      <summary><b>${esc(o.nazwa)}</b> <span class="ob-st st-${o.status}">${ST[o.status] || o.status}</span></summary>
+      <p class="muted">dane: ${esc(o.od_danych)} – ${esc(o.do_danych)} · ostatnia zamknięta doba
+        ${esc(o.ostatnia_doba)}: ${o.loty_ostatniej}${o.norma ? ' z ' + o.norma : ''} lotów${
+        o.odciete ? ` · <b>poza okresem: ${o.odciete} wpisów</b>` : ''}</p>
+      <div class="ob-2">
+        <label>Pierwsza doba<input type="date" data-u="od" value="${esc(u.od || '')}"></label>
+        <label>Ostatnia doba<input type="date" data-u="do" value="${esc(u.do || '')}"></label>
+      </div>
+      <p class="muted ob-noc">${u.do ? 'ostatnia noc: ' + esc(nocZ(u.do)) : ''}</p>
+      <label class="ob-l">Zmiany liczby lotów (od doby · lotów na dobę)</label>
+      <div class="ob-zmiany">${(u.zmiany || []).map(wierszZm).join('')}</div>
+      <button type="button" class="b sec ob-dodaj">+ Zmiana liczby lotów</button>
+    </details>`;
+  }).join('');
+  box.querySelectorAll('details.ob').forEach(det => {
+    const pod = () => det.querySelectorAll('.ob-x').forEach(b => b.onclick = () => b.parentNode.remove());
+    det.querySelector('.ob-dodaj').onclick = () => {
+      det.querySelector('.ob-zmiany').insertAdjacentHTML('beforeend', wierszZm({})); pod();
+    };
+    const doInp = det.querySelector('[data-u="do"]');
+    doInp.oninput = () => { det.querySelector('.ob-noc').textContent = doInp.value ? 'ostatnia noc: ' + nocZ(doInp.value) : ''; };
+    pod();
+  });
+}
+
+function zbierzObiekty() {
+  const out = {};
+  // obiekty spoza bieżącej listy (np. nieobecne w arkuszu) zostają nietknięte
+  Object.assign(out, obiektyUst());
+  document.querySelectorAll('#obiekty details.ob').forEach(det => {
+    const u = { nazwa: det.dataset.nazwa, od: null, do: null, zmiany: [] };
+    det.querySelectorAll('[data-u]').forEach(p => { u[p.dataset.u] = p.value || null; });
+    det.querySelectorAll('.ob-zm').forEach(w => {
+      const od = w.querySelector('[data-z="od"]').value, loty = Number(w.querySelector('[data-z="loty"]').value);
+      if (od && loty > 0) u.zmiany.push({ od, loty });
+    });
+    u.zmiany.sort((a, b) => a.od < b.od ? -1 : 1);
+    if (u.od && u.do && u.od > u.do) throw new Error(u.nazwa + ': pierwsza doba jest po ostatniej.');
+    if (!u.od && !u.do && !u.zmiany.length) delete out[det.dataset.klucz];
+    else out[det.dataset.klucz] = u;
+  });
+  return out;
+}
+
 /* ---------- ustawienia ---------- */
 function wierszZrodla(nazwa, url) {
   const d = document.createElement('div');
@@ -421,6 +547,7 @@ function otworzUstawienia() {
     $('#zaawToggle').classList.add('open');
     $('#zaawBox').classList.add('open');
   }
+  rysujObiekty();
   $('#sheet').classList.remove('hidden');
 }
 
@@ -429,6 +556,9 @@ $('#zamknij').onclick = () => $('#sheet').classList.add('hidden');
 $('#dodaj').onclick = () => $('#lista').appendChild(wierszZrodla('', ''));
 $('#odswiez').onclick = () => wczytaj(true);
 $('#zapisz').onclick = () => {
+  let obiekty;
+  try { obiekty = zbierzObiekty(); }
+  catch (e) { alert(e.message); return; }
   const arkusze = [];
   const glowny = $('#glowny').value.trim();
   if (glowny) arkusze.push({ nazwa: '', url: glowny });
@@ -440,15 +570,18 @@ $('#zapisz').onclick = () => {
     arkusze,
     cykl: Number($('#cykl').value) || 10,
     pomijaj: $('#pomijaj').value.split(',').map(x => x.trim()).filter(Boolean),
+    obiekty,
   });
   $('#sheet').classList.add('hidden');
   $('#stamp').innerHTML = '<span>przeliczanie…</span>';
+  // te same arkusze w pamięci — przeliczamy od razu, potem i tak pobieramy
+  if (REK && arkusze.length) przeliczZPamieci();
   wczytaj(true);
 };
 
 /* ---------- start ---------- */
 const z = cache();
-if (z) render(z);
+if (z) { try { render(z); } catch (e) { /* zapis ze starszej wersji — poczekaj na pobranie */ } }
 wczytaj(false);
 
 document.addEventListener('visibilitychange', () => {

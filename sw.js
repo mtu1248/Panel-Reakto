@@ -1,7 +1,7 @@
 /* Panel REAKTO — pamięć podręczna aplikacji.
    Pliki aplikacji trzymane są lokalnie, dzięki czemu otwiera się natychmiast
    i działa bez połączenia. Dane z arkusza pobierane są zawsze z sieci. */
-const WERSJA = 'reakto-v2';
+const WERSJA = 'reakto-v3';
 const PLIKI = [
   './', './index.html', './style.css', './xlsx.js', './analiza.js', './app.js',
   './manifest.json', './ikona-180.png', './ikona-192.png', './ikona-512.png',
