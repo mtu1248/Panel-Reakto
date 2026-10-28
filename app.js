@@ -4,6 +4,22 @@
    i zapamiętuje ostatni wynik, żeby działać także bez połączenia.
    Jeden wklejony adres arkusza obejmuje wszystkie zakładki i miesiące. */
 
+const WERSJA_APP = '3.0.1';
+
+/* Niepełna aktualizacja: nowy app.js ze starym analiza.js (albo odwrotnie).
+   Pokazujemy to wprost, zamiast mylącego „brak połączenia”. */
+function zgodnoscPlikow() {
+  if (typeof WERSJA_ANALIZY === 'undefined' || WERSJA_ANALIZY !== WERSJA_APP
+      || typeof rekordyZArkuszy !== 'function') {
+    return 'Aplikacja zaktualizowała się tylko częściowo (pliki z dwóch wersji: app.js '
+      + WERSJA_APP + ', analiza.js ' + (typeof WERSJA_ANALIZY === 'undefined' ? 'starsza niż 3.0' : WERSJA_ANALIZY)
+      + '). Zamknij aplikację całkowicie (przesuń w górę) i otwórz ją ponownie. '
+      + 'Jeśli to nie pomoże: sprawdź, czy na GitHubie są wszystkie pliki nowej wersji, '
+      + 'albo usuń ikonę i dodaj ją jeszcze raz z Safari.';
+  }
+  return null;
+}
+
 const KOLORY = {
   'Wilgotność': '#E9A13B', 'Deszcz': '#2E6FA8', 'Wiatr': '#9BC7DE',
   'Mgła': '#6FBBD6', 'Awaria': '#D9534F', 'Serwis': '#8896AB',
@@ -81,6 +97,15 @@ async function wczytaj(wymuszone) {
   const zrodla = (u.arkusze || []).filter(a => a.url);
   if (!zrodla.length) {
     pokazBrakKonfiguracji();
+    return;
+  }
+  const niezgodne = zgodnoscPlikow();
+  if (niezgodne) {
+    $('#alert').textContent = niezgodne;
+    $('#alert').classList.remove('hidden');
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+      navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+    }
     return;
   }
   $('#odswiez').classList.add('spin');
@@ -177,11 +202,16 @@ async function wczytaj(wymuszone) {
       $('#alert').classList.remove('hidden');
     }
   } catch (e) {
+    // „Brak połączenia” tylko wtedy, gdy naprawdę żadne źródło nie odpowiedziało.
+    // Gdy arkusz przyszedł, a nie dał się przeliczyć — mówimy to wprost, z treścią błędu.
+    const pobrano = arkusze.length > 0;
     const z = cache();
     if (z) {
-      render(z);
-      $('#alert').textContent = 'Brak połączenia — pokazane są dane z ostatniego '
-        + 'pobrania (' + (z.zaktualizowano || '—') + ').';
+      try { render(z); } catch (e2) { /* zapis ze starszej wersji */ }
+      $('#alert').textContent = (pobrano
+        ? 'Arkusz pobrany, ale nie udało się go przeliczyć: ' + e.message + ' — '
+        : 'Brak połączenia — ')
+        + 'pokazane są dane z ostatniego pobrania (' + (z.zaktualizowano || '—') + ').';
       $('#alert').classList.remove('hidden');
     } else {
       pokazBladPobierania(e, diagnostyka);

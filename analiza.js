@@ -606,6 +606,10 @@ function przelicz(arkuszeLubRek, obiekty, lokKlucz) {
   };
 }
 
+/* Numer wersji logiki — app.js sprawdza, czy pasuje do jego własnego.
+   Różne numery = telefon złożył aplikację z plików dwóch wersji. */
+const WERSJA_ANALIZY = '3.0.1';
+
 /* do testów w Node — w przeglądarce bez znaczenia */
 if (typeof module !== 'undefined') {
   module.exports = { przelicz, rekordyZArkuszy, zbierz, sumuj, filtrujRekordy, nominalDoby,
